@@ -8,6 +8,8 @@ from torch.distributions import Uniform, TransformedDistribution
 import numpy as np
 """Additive coupling layer.
 """
+
+
 class AdditiveCoupling(nn.Module):
     def __init__(self, in_out_dim, mid_dim, hidden, mask_config):
         """Initialize an additive coupling layer.
@@ -19,7 +21,21 @@ class AdditiveCoupling(nn.Module):
             mask_config: 1 if transform odd units, 0 if transform even units.
         """
         super(AdditiveCoupling, self).__init__()
-        #TODO fill in
+
+        input_size = in_out_dim // 2
+        self.in_block = nn.Sequential(
+            nn.Linear(input_size, mid_dim),
+            nn.ReLU())
+
+        self.mid_block = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(mid_dim, mid_dim),
+                nn.ReLU()) for i in range(hidden - 1)])
+
+        out_size = in_out_dim // 2
+        self.out_block = nn.Linear(mid_dim, out_size)
+
+        self.mask_config = mask_config
 
     def forward(self, x, log_det_J, reverse=False):
         """Forward pass.
