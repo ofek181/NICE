@@ -57,6 +57,8 @@ class AdditiveCoupling(nn.Module):
             transformed tensor and updated log-determinant of Jacobian.
         """
         # reshape x to match NICE shapes.
+        size0, size1 = x.size()
+
         x = x.reshape((x.shape[0], x.shape[1] // 2, 2))
 
         # determine units to transform on using mask-config.
@@ -80,7 +82,9 @@ class AdditiveCoupling(nn.Module):
         x = torch.stack((x2, x1), dim=2)
         if self.mask:
             x = torch.stack((x1, x2), dim=2)
-        return x.reshape((x.shape[0], x.shape[1])), log_det_J
+
+        out_param = x.reshape((size0, size1)), log_det_J
+        return out_param
 
 
 class AffineCoupling(nn.Module):

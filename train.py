@@ -4,6 +4,7 @@
 import argparse
 import torch
 import torchvision
+import tqdm
 from torchvision import transforms
 from collections import defaultdict
 from tqdm import trange
@@ -11,75 +12,150 @@ import matplotlib.pyplot as plt
 import nice
 
 
-def train(flow, trainloader, optimizer, epoch):
-    flow.train()  # set to training mode
-    for inputs,_ in trainloader:
-        inputs =  inputs.view(inputs.shape[0],inputs.shape[1]*inputs.shape[2]*inputs.shape[3]) #change  shape from BxCxHxW to Bx(C*H*W)
-        #TODO Fill in
+def dequantization_and_scale(inputs):
+    noise = torch.distributions.Uniform(0., 1.).sample(inputs.size())
+    inputs = (inputs * 255. + noise) / 256.
+    return inputs
 
-def test(flow, testloader, filename, epoch, sample_shape):
+
+def train(flow, trainloader, optimizer, epoch, device):
+    flow.train()
+    loss = 0
+    i_batch = 0
+    for inputs in trainloader:
+        i_batch += 1
+        inputs, _ = inputs
+        optimizer.zero_grad()
+        inputs = inputs.view(inputs.shape[0], inputs.shape[1] * inputs.shape[2] * inputs.shape[3])
+        inputs = dequantization_and_scale(inputs)
+        inputs = inputs.to(device)
+        batch_loss = -flow(inputs).mean()
+        loss += batch_loss
+        batch_loss.backward()
+        optimizer.step()
+    return loss / i_batch
+
+
+def test(flow, testloader, filename, epoch, sample_shape, device):
     flow.eval()  # set to inference mode
     with torch.no_grad():
-        samples = flow.sample(100).cpu()
+        samples = flow.sample(100).to(device)
         a,b = samples.min(), samples.max()
         samples = (samples-a)/(b-a+1e-10) 
         samples = samples.view(-1,sample_shape[0],sample_shape[1],sample_shape[2])
         torchvision.utils.save_image(torchvision.utils.make_grid(samples),
                                      './samples/' + filename + 'epoch%d.png' % epoch)
-        #TODO full in
+        loss = 0
+        i_batch = 0
+        for inputs in testloader:
+            i_batch += 1
+            inputs, _ = inputs
+            inputs = inputs.view(inputs.shape[0], inputs.shape[1] * inputs.shape[2] * inputs.shape[3])
+            batch_loss = -flow(inputs).mean()
+            loss += float(batch_loss)
+    return loss / i_batch
 
 
 def main(args):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    sample_shape = [1,28,28]
-    transform  = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (1.,)),
-        transforms.Lambda(lambda x: x + torch.zeros_like(x).uniform_(0., 1./256.)) #dequantization
-    ])
-
+    # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")  # for mac
+    device = "cpu"
+    full_dim = 1 * 28 * 28
     if args.dataset == 'mnist':
-        trainset = torchvision.datasets.MNIST(root='./data/MNIST',
-            train=True, download=True, transform=transform)
+        (full_dim, mid_dim, hidden) = (1 * 28 * 28, args.mid_dim, args.hidden)
+        transform = torchvision.transforms.ToTensor()
+        trainset = torchvision.datasets.MNIST(root='~/torch/data/MNIST',
+                                              train=True, download=True, transform=transform)
         trainloader = torch.utils.data.DataLoader(trainset,
-            batch_size=args.batch_size, shuffle=True, num_workers=2)
+                                                  batch_size=args.batch_size, shuffle=True, num_workers=2)
         testset = torchvision.datasets.MNIST(root='./data/MNIST',
-            train=False, download=True, transform=transform)
+                                             train=False, download=True, transform=transform)
         testloader = torch.utils.data.DataLoader(testset,
-            batch_size=args.batch_size, shuffle=False, num_workers=2)
+                                                 batch_size=args.batch_size, shuffle=False, num_workers=1)
+
     elif args.dataset == 'fashion-mnist':
+        (full_dim, mid_dim, hidden) = (1 * 28 * 28, args.mid_dim, args.hidden)
+        transform = torchvision.transforms.ToTensor()
         trainset = torchvision.datasets.FashionMNIST(root='~/torch/data/FashionMNIST',
-            train=True, download=True, transform=transform)
+                                                     train=True, download=True, transform=transform)
         trainloader = torch.utils.data.DataLoader(trainset,
-            batch_size=batch_size, shuffle=True, num_workers=2)
-        testset = torchvision.datasets.FashionMNIST(root='./data/FashionMNIST',
-            train=False, download=True, transform=transform)
+                                                  batch_size=args.batch_size, shuffle=True, num_workers=2)
+        testset = torchvision.datasets.MNIST(root='./data/FashionMNIST',
+                                             train=False, download=True, transform=transform)
         testloader = torch.utils.data.DataLoader(testset,
-            batch_size=args.batch_size, shuffle=False, num_workers=2)
+                                                 batch_size=args.batch_size, shuffle=False, num_workers=1)
+
     else:
-        raise ValueError('Dataset not implemented')
+        raise ValueError('Not a valid dataset')
+
+
+    #  transform = transforms.Compose([
+    #      transforms.ToTensor(),
+    #      transforms.Normalize((0.5,), (1.,))]),
+    #      #transforms.Lambda(lambda x: x + torch.zeros_like(x).uniform_(0., 1./256.)) #dequantization
+    # # ])
+    #
+    #  if args.dataset == 'mnist':
+    #      trainset = torchvision.datasets.MNIST(root='./data/MNIST',
+    #          train=True, download=True, transform=transform)
+    #      trainloader = torch.utils.data.DataLoader(trainset,
+    #          batch_size=args.batch_size, shuffle=True, num_workers=2)
+    #      testset = torchvision.datasets.MNIST(root='./data/MNIST',
+    #          train=False, download=True, transform=transform)
+    #      testloader = torch.utils.data.DataLoader(testset,
+    #          batch_size=args.batch_size, shuffle=False, num_workers=2)
+    #  elif args.dataset == 'fashion-mnist':
+    #      trainset = torchvision.datasets.FashionMNIST(root='~/torch/data/FashionMNIST',
+    #          train=True, download=True, transform=transform)
+    #      trainloader = torch.utils.data.DataLoader(trainset,
+    #          batch_size=args.batch_size, shuffle=True, num_workers=2)
+    #      testset = torchvision.datasets.FashionMNIST(root='./data/FashionMNIST',
+    #          train=False, download=True, transform=transform)
+    #      testloader = torch.utils.data.DataLoader(testset,
+    #          batch_size=args.batch_size, shuffle=False, num_workers=2)
 
     model_save_filename = '%s_' % args.dataset \
-             + 'batch%d_' % args.batch_size \
-             + 'coupling%d_' % args.coupling \
-             + 'coupling_type%d_' % args.coupling_type \
-             + 'mid%d_' % args.mid_dim \
-             + 'hidden%d_' % args.hidden \
-             + '.pt'
+                          + 'batch%d_' % args.batch_size \
+                          + 'coupling%d_' % args.coupling \
+                          + 'coupling_type%s_' % args.coupling_type \
+                          + 'mid%d_' % args.mid_dim \
+                          + 'hidden%d_' % args.hidden \
+                          + '.pt'
 
     flow = nice.NICE(
-                prior=args.prior,
-                coupling=args.coupling,
-                coupling_type=args.coupling_type,
-                in_out_dim=full_dim, 
-                mid_dim=args.mid_dim,
-                hidden=args.hidden,
-                device=device).to(device)
+        prior=args.prior,
+        coupling=args.coupling,
+        coupling_type=args.coupling_type,
+        in_out_dim=full_dim,
+        mid_dim=args.mid_dim,
+        hidden=args.hidden,
+        device=device).to(device)
 
     optimizer = torch.optim.Adam(
         flow.parameters(), lr=args.lr)
 
-    #TODO fill in
+    train_losses = []
+    test_losses = []
+
+    for epoch in tqdm.tqdm(range(args.epochs)):
+        train_loss = train(flow, trainloader, optimizer, epoch, device)
+        train_losses.append(train_loss)
+        filename = f"samples of {args.dataset}"
+        sample_shape = [1, 28, 28]
+        test_loss = test(flow, testloader, filename, epoch, sample_shape, device)
+        test_losses.append(test_loss)
+        print(f"Epoch {epoch + 1} finished:  train loss: {train_loss}, test loss: {test_loss} ")
+
+        if epoch % 10 == 0:  # Save model every 10 epochs
+            torch.save(flow.state_dict(), "./models/" + model_save_filename)
+
+    fig, ax = plt.subplots()
+    ax.plot(train_losses)
+    ax.plot(test_losses)
+    ax.set_title("Train and Test Log Likelihood Loss")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.legend(["train loss", "test loss"])
+    plt.savefig("./loss/", f"{args.dataset}_loss.png")
 
 
 if __name__ == '__main__':
