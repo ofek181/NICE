@@ -47,7 +47,29 @@ class AdditiveCoupling(nn.Module):
         Returns:
             transformed tensor and updated log-determinant of Jacobian.
         """
-        #TODO fill in
+        x = x.reshape((x.shape[0], x.shape[1] // 2, 2))
+
+        on, off = x[:, :, 1], x[:, :, 0]
+        if self.mask_config:
+            on, off = x[:, :, 0], x[:, :, 1]
+
+        off_ = self.in_block(off)
+
+        for i in range(len(self.mid_block)):
+            off_ = self.mid_block[i](off_)
+
+        shift = self.out_block(off_)
+
+        if reverse:
+            on = on - shift
+        else:
+            on = on + shift
+
+        x = torch.stack((off, on), dim=2)
+        if self.mask_config:
+            x = torch.stack((on, off), dim=2)
+
+        return x.reshape((x.shape[0], x.shape[1])), log_det_J
 
 class AffineCoupling(nn.Module):
     def __init__(self, in_out_dim, mid_dim, hidden, mask_config):
