@@ -42,7 +42,7 @@ def test(flow, testloader, filename, epoch, sample_shape, device):
     flow.eval()  # set to inference mode
     with torch.no_grad():
         samples = flow.sample(100).to(device)
-        a,b = samples.min(), samples.max()
+        a, b = samples.min(), samples.max()
         samples = (samples-a)/(b-a+1e-10) 
         samples = samples.view(-1,sample_shape[0],sample_shape[1],sample_shape[2])
         torchvision.utils.save_image(torchvision.utils.make_grid(samples),
@@ -60,9 +60,7 @@ def main(args):
     # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")  # for mac
     device = "cpu"
 
-    transform = transforms.Compose([
-         transforms.ToTensor(),
-         transforms.Normalize((0.5,), (1.,))])
+    transform = transforms.Compose([transforms.ToTensor()])
 
     if args.dataset == 'mnist':
         trainset = torchvision.datasets.MNIST(root='./data/MNIST',
@@ -107,26 +105,27 @@ def main(args):
 
     train_losses = []
     test_losses = []
-    filename = f"generative samples of {args.dataset}"
+    filename = f"samples of {args.dataset}"
     shape = [1, 28, 28]
 
     for epoch in tqdm(range(args.epochs)):
         train_loss = train(flow, trainloader, optimizer, device)
         train_losses.append(train_loss)
-        test_loss = test(flow, testloader, filename, epoch, shape, device)
+        test_loss = test(flow, testloader, filename, epoch+1, shape, device)
         test_losses.append(test_loss)
         print(f"Epoch {epoch} finished:  train loss: {train_loss}, test loss: {test_loss} ")
         if epoch % 5 == 0:
             torch.save(flow.state_dict(), "./models/" + model_save_filename)
 
-    fig, ax = plt.subplots()
-    ax.plot(train_losses)
-    ax.plot(test_losses)
-    ax.set_title("Train and Test Log Likelihood Loss")
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("Loss")
-    ax.legend(["train loss", "test loss"])
-    plt.savefig("./loss/", f"{args.dataset}_loss.png")
+    with torch.no_grad():
+        fig, ax = plt.subplots()
+        ax.plot(train_losses)
+        ax.plot(test_losses)
+        ax.set_title("Train and Test Log Likelihood Loss")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss")
+        ax.legend(["train loss", "test loss"])
+        plt.savefig(fname="./loss/" + f"{args.dataset}_loss.png")
 
 
 if __name__ == '__main__':

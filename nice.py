@@ -70,13 +70,13 @@ class AdditiveCoupling(nn.Module):
         out = self.input_layer(x2)
         for i in range(len(self.hidden_layers)):
             out = self.hidden_layers[i](out)
-        shift = self.output_layer(out)
+        out = self.output_layer(out)
 
         # apply additive function
         if reverse:
-            x1 = x1 - shift
+            x1 = x1 - out
         else:
-            x1 = x1 + shift
+            x1 = x1 + out
 
         # return x with proper stack
         x = torch.stack((x2, x1), dim=2)
@@ -137,13 +137,12 @@ class Scaling(nn.Module):
         Returns:
             transformed tensor and log-determinant of Jacobian.
         """
-        scale = torch.exp(self.scale) + self.eps
-        negative_scale = torch.exp(-self.scale) + self.eps
+        scale = torch.exp(self.scale)
         log_det_j = torch.sum(self.scale) + self.eps
 
         # scale the data by the Jacobian
         if reverse:
-            x = x * negative_scale
+            x = x * (scale ** -1)
         else:
             x = x * scale
 
