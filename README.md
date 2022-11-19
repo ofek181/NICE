@@ -1,0 +1,2 @@
+# An implementation of NICE: a deep learning framework for modeling complex high-dimensional densities.
+## *Dinh, Laurent, David Krueger, and Yoshua Bengio. "Nice: Non-linear independent components estimation." arXiv preprint arXiv:1410.8516 (2014).*
