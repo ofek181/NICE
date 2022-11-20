@@ -31,6 +31,7 @@ def train(flow, trainloader, optimizer, device):
         features = dequantize_and_scale(features)
         features = features.to(device)
         optimizer.zero_grad()
+        tmp = flow(features)
         batch_loss = -flow(features).mean()
         loss += batch_loss
         batch_loss.backward()
@@ -113,7 +114,7 @@ def main(args):
         train_losses.append(train_loss)
         test_loss = test(flow, testloader, filename, epoch+1, shape, device)
         test_losses.append(test_loss)
-        print(f"Epoch {epoch} finished:  train loss: {train_loss}, test loss: {test_loss} ")
+        print(f"Epoch {epoch + 1} finished:  train loss: {train_loss}, test loss: {test_loss} ")
         if epoch % 5 == 0:
             torch.save(flow.state_dict(), "./models/" + model_save_filename)
 

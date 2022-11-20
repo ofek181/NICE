@@ -98,7 +98,31 @@ class AffineCoupling(nn.Module):
             mask_config: 1 if transform odd units, 0 if transform even units.
         """
         super(AffineCoupling, self).__init__()
-        # TODO fill in
+
+        # mask-config determines units to transform on.
+        self.mask = mask_config
+
+        # input size is half of the in_out dimension.
+        input_size = in_out_dim // 2
+
+        # create a Sequential linear block with ReLu activation.
+        self.input_layer = nn.Sequential(
+            nn.Linear(input_size, mid_dim),
+            nn.ReLU())
+
+        # create a ModuleList of Sequential blocks with ReLu activations.
+        self.hidden_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(mid_dim, mid_dim),
+                nn.ReLU()) for i in range(hidden - 1)])
+
+        out_size = in_out_dim
+
+        # create a linear output block
+        self.output_layer = nn.Linear(mid_dim, out_size)
+
+        # mask-config determines units to transform on.
+        self.mask = mask_config
 
     def forward(self, x, log_det_J, reverse=False):
         """Forward pass.
@@ -110,7 +134,32 @@ class AffineCoupling(nn.Module):
         Returns:
             transformed tensor and updated log-determinant of Jacobian.
         """
-        # TODO fill in
+        # split data using mask_config
+        size0, size1 = x.size()
+        x = x.reshape((x.shape[0], x.shape[1] // 2, 2))
+        x1, x2 = x[:, :, 1], x[:, :, 0]
+        if self.mask:
+            x1, x2 = x[:, :, 0], x[:, :, 1]
+
+        out = self.input_layer(x2)
+        for i in range(len(self.hidden_layers)):
+            out = self.hidden_layers[i](out)
+        out = self.output_layer(out)
+
+        log_s, t = out[:, 0::2, ...], out[:, 1::2, ...]
+        s = torch.exp(log_s)
+
+        if reverse:
+            x1 = (x1 - t) / s
+        else:
+            x1 = s * x1 + t
+
+        log_det_J += torch.sum(log_s)
+        x = torch.cat((x2, x1), dim=1)
+        if self.mask:
+            x = torch.cat((x1, x2), dim=1)
+
+        return x, log_det_J
 
 
 class Scaling(nn.Module):
@@ -217,7 +266,7 @@ class NICE(nn.Module):
         x, log_det_j = self.scaling(z, reverse=True)
         # reverse coupling layers
         for i in reversed(range(len(self.coupling))):
-            x, log_det_j = self.coupling[i](x, 0, reverse=True)
+            x, log_det_j = self.coupling[i](x, log_det_j, reverse=True)
         # return reversed value -> x
         return x
 
@@ -235,7 +284,8 @@ class NICE(nn.Module):
         for i in range(len(self.coupling)):
             x, log_det_j = self.coupling[i](x, log_det_j)
         # return scaled x and log det of Jacobian
-        return self.scaling(x, reverse=False)
+        out = self.scaling(x, reverse=False)
+        return out
 
     def log_prob(self, x):
         """Computes data log-likelihood.
