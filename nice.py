@@ -159,37 +159,6 @@ class AffineCoupling(nn.Module):
 
         return x, log_det_J
 
-        #
-        #
-        # # split data using mask_config
-        # x1, x2 = x[:, 1::2], x[:, 0::2]
-        # if self.mask:
-        #     x1, x2 = x[:, 0::2], x[:, 1::2]
-        #
-        # t = self.shift_input_layer(x2)
-        # for i in range(len(self.shift_hidden_layers)):
-        #     t = self.shift_hidden_layers[i](t)
-        # t = self.shift_output_layer(t)
-        #
-        # s = self.scale_input_layer(x2)
-        # for i in range(len(self.scale_hidden_layers)):
-        #     s = self.scale_hidden_layers[i](s)
-        # s = torch.sigmoid(self.scale_output_layer(s))
-        #
-        # if reverse:
-        #     x1 = (x1 - t) / s
-        # else:
-        #     x1 = s * x1 + t
-        #
-        # out = torch.ones_like(x)
-        # out[:, 1::2], out[:, 0::2] = (x1, x2)
-        # if self.mask:
-        #     out[:, 1::2], out[:, 0::2] = (x1, x2)
-        #
-        # log_det_J = torch.sum(torch.log(torch.abs(s)))
-
-        # return out, log_det_J
-
 
 class Scaling(nn.Module):
     """Log-scaling layer.
