@@ -31,7 +31,6 @@ def train(flow, trainloader, optimizer, device):
         features = dequantize_and_scale(features)
         features = features.to(device)
         optimizer.zero_grad()
-        tmp = flow(features)
         batch_loss = -flow(features).mean()
         loss += batch_loss
         batch_loss.backward()
@@ -154,7 +153,7 @@ if __name__ == '__main__':
     parser.add_argument('--coupling-type',
                         help='.',
                         type=str,
-                        default='additive')
+                        default='affine')
     parser.add_argument('--coupling',
                         help='.',
                         # type=int,

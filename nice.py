@@ -3,6 +3,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.distributions.transforms import Transform, SigmoidTransform, AffineTransform
 from torch.distributions import Uniform, TransformedDistribution
 import numpy as np
@@ -116,13 +117,8 @@ class AffineCoupling(nn.Module):
                 nn.Linear(mid_dim, mid_dim),
                 nn.ReLU()) for i in range(hidden - 1)])
 
-        out_size = in_out_dim
-
         # create a linear output block
-        self.output_layer = nn.Linear(mid_dim, out_size)
-
-        # mask-config determines units to transform on.
-        self.mask = mask_config
+        self.output_layer = nn.Linear(mid_dim, in_out_dim)
 
     def forward(self, x, log_det_J, reverse=False):
         """Forward pass.
@@ -135,11 +131,10 @@ class AffineCoupling(nn.Module):
             transformed tensor and updated log-determinant of Jacobian.
         """
         # split data using mask_config
-        size0, size1 = x.size()
-        x = x.reshape((x.shape[0], x.shape[1] // 2, 2))
-        x1, x2 = x[:, :, 1], x[:, :, 0]
         if self.mask:
-            x1, x2 = x[:, :, 0], x[:, :, 1]
+            x1, x2 = (x[:, 1::2], x[:, 0::2])
+        else:
+            x1, x2 = (x[:, 0::2], x[:, 1::2])
 
         out = self.input_layer(x2)
         for i in range(len(self.hidden_layers)):
@@ -147,19 +142,53 @@ class AffineCoupling(nn.Module):
         out = self.output_layer(out)
 
         log_s, t = out[:, 0::2, ...], out[:, 1::2, ...]
-        s = torch.exp(log_s)
+        s = torch.sigmoid(log_s)
 
         if reverse:
             x1 = (x1 - t) / s
         else:
             x1 = s * x1 + t
 
-        log_det_J += torch.sum(log_s)
-        x = torch.cat((x2, x1), dim=1)
+        log_det_J = torch.sum(torch.log(torch.abs(s)))
+
+        x = torch.ones_like(x)
         if self.mask:
-            x = torch.cat((x1, x2), dim=1)
+            x[:, 1::2], x[:, 0::2] = (x1, x2)
+        else:
+            x[:, 1::2], x[:, 0::2] = (x1, x2)
 
         return x, log_det_J
+
+        #
+        #
+        # # split data using mask_config
+        # x1, x2 = x[:, 1::2], x[:, 0::2]
+        # if self.mask:
+        #     x1, x2 = x[:, 0::2], x[:, 1::2]
+        #
+        # t = self.shift_input_layer(x2)
+        # for i in range(len(self.shift_hidden_layers)):
+        #     t = self.shift_hidden_layers[i](t)
+        # t = self.shift_output_layer(t)
+        #
+        # s = self.scale_input_layer(x2)
+        # for i in range(len(self.scale_hidden_layers)):
+        #     s = self.scale_hidden_layers[i](s)
+        # s = torch.sigmoid(self.scale_output_layer(s))
+        #
+        # if reverse:
+        #     x1 = (x1 - t) / s
+        # else:
+        #     x1 = s * x1 + t
+        #
+        # out = torch.ones_like(x)
+        # out[:, 1::2], out[:, 0::2] = (x1, x2)
+        # if self.mask:
+        #     out[:, 1::2], out[:, 0::2] = (x1, x2)
+        #
+        # log_det_J = torch.sum(torch.log(torch.abs(s)))
+
+        # return out, log_det_J
 
 
 class Scaling(nn.Module):
@@ -244,7 +273,7 @@ class NICE(nn.Module):
                                  hidden=self.hidden,
                                  mask_config=i % 2) for i in range(coupling)])
 
-        elif self.coupling_type == 'adaptive':
+        elif self.coupling_type == 'affine':
             self.coupling = nn.ModuleList([
                 AffineCoupling(in_out_dim=self.in_out_dim,
                                mid_dim=self.mid_dim,
@@ -263,10 +292,10 @@ class NICE(nn.Module):
             transformed tensor in data space X.
         """
         # reverse scaling
-        x, log_det_j = self.scaling(z, reverse=True)
+        x, _ = self.scaling(z, reverse=True)
         # reverse coupling layers
         for i in reversed(range(len(self.coupling))):
-            x, log_det_j = self.coupling[i](x, log_det_j, reverse=True)
+            x, _ = self.coupling[i](x, 0, reverse=True)
         # return reversed value -> x
         return x
 
@@ -282,10 +311,14 @@ class NICE(nn.Module):
         log_det_j = 0
         # pipe into the coupling layers
         for i in range(len(self.coupling)):
-            x, log_det_j = self.coupling[i](x, log_det_j)
+            x, ldj = self.coupling[i](x, log_det_j)
+            log_det_j += ldj
+
         # return scaled x and log det of Jacobian
-        out = self.scaling(x, reverse=False)
-        return out
+        x, ldj = self.scaling(x, reverse=False)
+        log_det_j += ldj
+
+        return x, log_det_j
 
     def log_prob(self, x):
         """Computes data log-likelihood.
