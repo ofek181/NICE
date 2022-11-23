@@ -1,4 +1,5 @@
 """Training procedure for NICE.
+Ofek Ophir 207180191
 """
 
 import argparse
@@ -105,7 +106,7 @@ def main(args):
 
     train_losses = []
     test_losses = []
-    filename = f"samples of {args.dataset}"
+    filename = f"{args.dataset}_ + {args.coupling_type}_"
     shape = [1, 28, 28]
 
     for epoch in tqdm(range(args.epochs)):
@@ -125,7 +126,7 @@ def main(args):
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Loss")
         ax.legend(["train loss", "test loss"])
-        plt.savefig(fname="./loss/" + f"{args.dataset}_loss.png")
+        plt.savefig(fname="./loss/" + f"{args.dataset}_" + f"{args.coupling_type}_loss.png")
 
 
 if __name__ == '__main__':
@@ -133,7 +134,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset',
                         help='dataset to be modeled.',
                         type=str,
-                        default='mnist')
+                        default='fashion-mnist')
     parser.add_argument('--prior',
                         help='latent distribution.',
                         type=str,
