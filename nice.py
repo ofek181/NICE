@@ -1,4 +1,5 @@
 """NICE model
+Ofek Ophir 207180191
 """
 
 import torch
@@ -155,7 +156,7 @@ class AffineCoupling(nn.Module):
         if self.mask:
             x[:, 1::2], x[:, 0::2] = (x1, x2)
         else:
-            x[:, 1::2], x[:, 0::2] = (x1, x2)
+            x[:, 1::2], x[:, 0::2] = (x2, x1)
 
         return x, log_det_J
 
