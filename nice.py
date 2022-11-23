@@ -1,11 +1,9 @@
 """NICE model
-Ofek Ophir 207180191
 """
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.distributions.transforms import Transform, SigmoidTransform, AffineTransform
+from torch.distributions.transforms import SigmoidTransform, AffineTransform
 from torch.distributions import Uniform, TransformedDistribution
 import numpy as np
 

@@ -1,5 +1,4 @@
 """Training procedure for NICE.
-Ofek Ophir 207180191
 """
 
 import argparse
